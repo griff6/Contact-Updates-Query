@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
+import secrets
+
 from fastapi import FastAPI, HTTPException
+from fastapi import Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import ContactUpdatesQueryRequest, ContactUpdatesQueryResponse
@@ -26,16 +30,38 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _required_env(name: str) -> str:
+    value = (os.getenv(name) or "").strip()
+    if value:
+        return value
+    raise HTTPException(status_code=500, detail=f"Server is missing required environment variable: {name}")
+
+
+def _get_odoo_credentials() -> OdooCredentials:
+    return OdooCredentials(
+        url=_required_env("ODOO_URL").rstrip("/"),
+        db=_required_env("ODOO_DB"),
+        username=_required_env("ODOO_USERNAME"),
+        password=_required_env("ODOO_PASSWORD"),
+    )
+
+
+def _verify_internal_token(x_internal_token: str | None) -> None:
+    expected = _required_env("INTERNAL_API_TOKEN")
+    provided = (x_internal_token or "").strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @app.post("/api/contact-updates/query", response_model=ContactUpdatesQueryResponse)
-def query_contact_updates(payload: ContactUpdatesQueryRequest) -> ContactUpdatesQueryResponse:
+def query_contact_updates(
+    payload: ContactUpdatesQueryRequest,
+    x_internal_token: str | None = Header(default=None),
+) -> ContactUpdatesQueryResponse:
     try:
+        _verify_internal_token(x_internal_token)
         start_date, end_date, contacts = fetch_contact_updates(
-            OdooCredentials(
-                url=payload.odoo_url,
-                db=payload.odoo_db,
-                username=payload.odoo_username,
-                password=payload.odoo_password,
-            ),
+            _get_odoo_credentials(),
             start_date=payload.start_date,
             end_date=payload.end_date,
             timezone_name=payload.timezone_name,
@@ -55,4 +81,3 @@ def query_contact_updates(payload: ContactUpdatesQueryRequest) -> ContactUpdates
         contact_count=len(contacts),
         contacts=contacts,
     )
-

@@ -6,22 +6,10 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class ContactUpdatesQueryRequest(BaseModel):
-    odoo_url: str = Field(..., description="Example: https://yourcompany.odoo.com")
-    odoo_db: str = Field(..., description="Odoo database name")
-    odoo_username: str
-    odoo_password: str
     start_date: date | None = None
     end_date: date | None = None
     timezone_name: str = "America/Regina"
     limit: int = 250
-
-    @field_validator("odoo_url")
-    @classmethod
-    def validate_odoo_url(cls, value: str) -> str:
-        cleaned = value.strip().rstrip("/")
-        if not cleaned.startswith("https://"):
-            raise ValueError("odoo_url must start with https://")
-        return cleaned
 
     @field_validator("limit")
     @classmethod
@@ -57,4 +45,3 @@ class ContactUpdatesQueryResponse(BaseModel):
     timezone_name: str
     contact_count: int
     contacts: list[ContactUpdateRecord]
-

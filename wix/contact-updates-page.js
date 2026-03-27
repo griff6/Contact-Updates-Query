@@ -21,10 +21,6 @@ async function runQuery() {
     const result = await fetchContactUpdates({
       startDate: toIsoDate($w("#startDatePicker").value),
       endDate: toIsoDate($w("#endDatePicker").value),
-      odooUrl: $w("#odooUrlInput").value,
-      odooDb: $w("#odooDbInput").value,
-      odooUsername: $w("#odooUsernameInput").value,
-      odooPassword: $w("#odooPasswordInput").value,
     });
 
     $w("#resultsTable").rows = result.contacts.map((contact) => ({
@@ -57,4 +53,3 @@ function toIsoDate(value) {
   const day = `${value.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-

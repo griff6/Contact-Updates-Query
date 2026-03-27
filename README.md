@@ -3,7 +3,6 @@
 This repository contains the Render-side API for a small internal Wix application that lets users:
 
 - choose a date range, defaulting to the last 7 days
-- enter their Odoo SaaS credentials
 - query for contacts whose notes or activities changed during that window
 - display the matching contacts back in Wix
 
@@ -14,10 +13,10 @@ The project is intentionally small and reuses the same Odoo XML-RPC connection p
 
 ## Recommended architecture
 
-1. The Wix page collects the date range and Odoo credentials.
+1. The Wix page collects the date range.
 2. Wix frontend calls a Wix backend web module.
-3. The Wix backend web module sends a POST request to this Render API.
-4. The Render API authenticates to Odoo and queries:
+3. The Wix backend web module reads a shared API token from Wix Secrets Manager and sends a POST request to this Render API.
+4. The Render API reads the shared Odoo service-account credentials from Render environment variables, authenticates to Odoo, and queries:
    - `mail.message` for contact notes
    - `mail.activity` for contact activities
    - `res.partner` for contact details
@@ -105,8 +104,15 @@ python3 -m src.cli \
 1. Push this repository to GitHub.
 2. Create a new Render Blueprint or Web Service from the repo.
 3. Use the included `render.yaml`.
-4. After deploy, confirm `/health` returns `{"status":"ok"}`.
-5. Paste the Render URL into `wix/backend/contactUpdates.web.js`.
+4. Add these environment variables in Render:
+   - `ODOO_URL`
+   - `ODOO_DB`
+   - `ODOO_USERNAME`
+   - `ODOO_PASSWORD`
+   - `INTERNAL_API_TOKEN`
+   - `PYTHON_VERSION=3.13` if Render does not pick up `.python-version`
+5. After deploy, confirm `/health` returns `{"status":"ok"}`.
+6. Paste the Render URL into `wix/backend/contactUpdates.web.js`.
 
 ## Wix setup
 
@@ -114,10 +120,6 @@ Create these page elements in Wix and match the IDs in `wix/contact-updates-page
 
 - `#startDatePicker`
 - `#endDatePicker`
-- `#odooUrlInput`
-- `#odooDbInput`
-- `#odooUsernameInput`
-- `#odooPasswordInput`
 - `#runButton`
 - `#statusText`
 - `#resultsTable`
@@ -137,18 +139,25 @@ Then:
 
 1. Copy `wix/backend/contactUpdates.web.js` into your Wix site's backend code.
 2. Copy `wix/contact-updates-page.js` into the page code for your contact updates page.
-3. Replace `https://YOUR-RENDER-SERVICE.onrender.com` with your real Render URL.
-4. Publish the site.
+3. In Wix Secrets Manager, add a secret named `renderInternalApiToken` with the same value you used for `INTERNAL_API_TOKEN` in Render.
+4. Replace `https://YOUR-RENDER-SERVICE.onrender.com` with your real Render URL.
+5. Publish the site.
 
-## Security note
+## Shared service-account setup
 
-Your requested design has each user typing their own Odoo credentials into the Wix page. That will work with this API, but for an internal app with 4 to 5 users, a shared Odoo integration account stored in Wix Secrets Manager or in Render environment variables would usually be safer and easier to support.
+This repository now uses the safer design for a small internal team:
 
-If you want, the next step can be either:
+- a shared Odoo integration user stored in Render environment variables
+- a shared internal API token stored in Render and Wix Secrets Manager
+- no Odoo credentials sent from the browser or typed by end users
 
-- keep the current per-user login design
-- switch to a shared service account design
-- add Wix member login restrictions so only approved internal users can run the query
+Recommended setup:
+
+1. Create an Odoo integration user with read access to contacts, activities, and notes.
+2. Set that user's credentials in Render.
+3. Generate a long random token and set it as `INTERNAL_API_TOKEN` in Render.
+4. Store the same token in Wix Secrets Manager as `renderInternalApiToken`.
+5. Restrict the Wix page to your internal users.
 
 ## Query behavior
 
@@ -160,6 +169,7 @@ The API:
 - looks for `mail.activity` records on `res.partner` updated in the window
 - returns the most recent note and activity details for each matching contact
 - sorts the final result by most recent update first
+- requires the `X-Internal-Token` header on the Render API request
 
 ## Sources used for the design
 
