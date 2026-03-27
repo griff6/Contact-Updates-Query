@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: contact-updates-query-builder
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+
