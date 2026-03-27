@@ -59,6 +59,47 @@ Then open:
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/docs`
 
+## Terminal testing before Wix or Render
+
+Yes. You can test the Odoo query directly from your terminal and print the results before building the Wix page or deploying to Render.
+
+Set your Odoo values as environment variables:
+
+```bash
+export ODOO_URL="https://your-company.odoo.com"
+export ODOO_DB="your-company"
+export ODOO_USERNAME="you@company.com"
+export ODOO_PASSWORD="your-password"
+```
+
+Then run:
+
+```bash
+python3 -m src.cli --start-date 2026-03-20 --end-date 2026-03-27 --limit 25
+```
+
+If you omit the dates, it defaults to the last 7 days:
+
+```bash
+python3 -m src.cli
+```
+
+If you want the raw output as JSON instead of a readable terminal summary:
+
+```bash
+python3 -m src.cli --format json
+```
+
+You can also pass credentials directly on the command line instead of using environment variables:
+
+```bash
+python3 -m src.cli \
+  --odoo-url "https://your-company.odoo.com" \
+  --odoo-db "your-company" \
+  --odoo-username "you@company.com" \
+  --odoo-password "your-password"
+```
+
 ## Render deployment
 
 1. Push this repository to GitHub.
