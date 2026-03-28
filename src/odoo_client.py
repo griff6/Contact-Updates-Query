@@ -8,11 +8,13 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .models import ContactUpdateRecord
+from .models import ContactNoteRecord, ContactUpdateRecord
 
 
 BODY_TAG_RE = re.compile(r"<[^>]+>")
 WHITESPACE_RE = re.compile(r"\s+")
+LINEBREAK_TAG_RE = re.compile(r"(?i)<\s*br\s*/?\s*>|<\s*/p\s*>|<\s*/div\s*>")
+MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
 
 
 class OdooAuthError(Exception):
@@ -55,8 +57,19 @@ def _dt_to_odoo(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _text_from_html(value: Any) -> str:
-    raw = html.unescape(BODY_TAG_RE.sub(" ", str(value or "")))
+def _text_from_html(value: Any, preserve_newlines: bool = False) -> str:
+    raw = str(value or "")
+    if preserve_newlines:
+        raw = LINEBREAK_TAG_RE.sub("\n", raw)
+        raw = BODY_TAG_RE.sub(" ", raw)
+        raw = html.unescape(raw)
+        raw = raw.replace("\r", "")
+        raw = re.sub(r"[ \t]+\n", "\n", raw)
+        raw = re.sub(r"\n[ \t]+", "\n", raw)
+        raw = MULTI_NEWLINE_RE.sub("\n\n", raw)
+        return raw.strip()
+
+    raw = html.unescape(BODY_TAG_RE.sub(" ", raw))
     return WHITESPACE_RE.sub(" ", raw).strip()
 
 
@@ -165,7 +178,7 @@ def _fetch_partner_notes(
     uid: int,
     start_utc: datetime,
     end_utc: datetime,
-) -> dict[int, dict[str, str]]:
+) -> dict[int, dict[str, Any]]:
     rows = _search_read_all(
         models,
         credentials,
@@ -177,24 +190,45 @@ def _fetch_partner_notes(
             ("write_date", ">=", _dt_to_odoo(start_utc)),
             ("write_date", "<", _dt_to_odoo(end_utc)),
         ],
-        ["res_id", "body", "write_date", "subtype_id"],
+        ["res_id", "subject", "body", "write_date", "subtype_id"],
         "write_date desc",
     )
 
-    notes_by_partner: dict[int, dict[str, str]] = {}
+    notes_by_partner: dict[int, dict[str, Any]] = {}
     for row in rows:
         partner_id = int(row.get("res_id") or 0)
-        if not partner_id or partner_id in notes_by_partner:
+        if not partner_id:
             continue
 
         subtype_name = _m2o_name(row.get("subtype_id")).lower()
         if subtype_name and "note" not in subtype_name:
             continue
 
-        notes_by_partner[partner_id] = {
-            "latest_note_at": str(row.get("write_date") or ""),
-            "latest_note_preview": _text_from_html(row.get("body"))[:300],
-        }
+        note_at = str(row.get("write_date") or "")
+        note_subject = str(row.get("subject") or "").strip()
+        note_text = _text_from_html(row.get("body"), preserve_newlines=True)
+
+        note_entry = ContactNoteRecord(
+            note_at=note_at,
+            subject=note_subject,
+            text=note_text,
+        )
+
+        existing = notes_by_partner.setdefault(
+            partner_id,
+            {
+                "latest_note_at": "",
+                "latest_note_subject": "",
+                "latest_note_text": "",
+                "notes": [],
+            },
+        )
+        existing["notes"].append(note_entry)
+
+        if not existing["latest_note_at"]:
+            existing["latest_note_at"] = note_at
+            existing["latest_note_subject"] = note_subject
+            existing["latest_note_text"] = note_text
 
     return notes_by_partner
 
@@ -229,7 +263,7 @@ def _fetch_partner_activities(
         activities_by_partner[partner_id] = {
             "latest_activity_at": str(row.get("write_date") or ""),
             "latest_activity_summary": str(row.get("summary") or "").strip(),
-            "latest_activity_note": _text_from_html(row.get("note"))[:300],
+            "latest_activity_note": _text_from_html(row.get("note"), preserve_newlines=True),
         }
 
     return activities_by_partner
@@ -300,6 +334,8 @@ def fetch_contact_updates(
         if activity_info:
             sources.append("activity")
 
+        latest_note_text = note_info.get("latest_note_text", "")
+
         records.append(
             ContactUpdateRecord(
                 partner_id=partner_id,
@@ -313,13 +349,15 @@ def fetch_contact_updates(
                 last_update_at=max(timestamps) if timestamps else "",
                 update_sources=sources,
                 latest_note_at=note_info.get("latest_note_at", ""),
-                latest_note_preview=note_info.get("latest_note_preview", ""),
+                latest_note_subject=note_info.get("latest_note_subject", ""),
+                latest_note_text=latest_note_text,
+                latest_note_preview=latest_note_text,
                 latest_activity_at=activity_info.get("latest_activity_at", ""),
                 latest_activity_summary=activity_info.get("latest_activity_summary", ""),
                 latest_activity_note=activity_info.get("latest_activity_note", ""),
+                notes=note_info.get("notes", []),
             )
         )
 
     records.sort(key=lambda row: (row.last_update_at, row.name.lower()), reverse=True)
     return resolved_start, resolved_end, records[:limit]
-
