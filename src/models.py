@@ -40,12 +40,19 @@ class ContactUpdateRecord(BaseModel):
     latest_activity_summary: str = ""
     latest_activity_note: str = ""
     notes: list["ContactNoteRecord"] = Field(default_factory=list)
+    activities: list["ContactActivityRecord"] = Field(default_factory=list)
 
 
 class ContactNoteRecord(BaseModel):
     note_at: str = ""
     subject: str = ""
     text: str = ""
+
+
+class ContactActivityRecord(BaseModel):
+    activity_at: str = ""
+    summary: str = ""
+    note: str = ""
 
 
 class ContactUpdatesQueryResponse(BaseModel):

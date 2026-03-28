@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .models import ContactNoteRecord, ContactUpdateRecord
+from .models import ContactActivityRecord, ContactNoteRecord, ContactUpdateRecord
 
 
 BODY_TAG_RE = re.compile(r"<[^>]+>")
@@ -239,7 +239,7 @@ def _fetch_partner_activities(
     uid: int,
     start_utc: datetime,
     end_utc: datetime,
-) -> dict[int, dict[str, str]]:
+) -> dict[int, dict[str, Any]]:
     rows = _search_read_all(
         models,
         credentials,
@@ -254,17 +254,37 @@ def _fetch_partner_activities(
         "write_date desc",
     )
 
-    activities_by_partner: dict[int, dict[str, str]] = {}
+    activities_by_partner: dict[int, dict[str, Any]] = {}
     for row in rows:
         partner_id = int(row.get("res_id") or 0)
-        if not partner_id or partner_id in activities_by_partner:
+        if not partner_id:
             continue
 
-        activities_by_partner[partner_id] = {
-            "latest_activity_at": str(row.get("write_date") or ""),
-            "latest_activity_summary": str(row.get("summary") or "").strip(),
-            "latest_activity_note": _text_from_html(row.get("note"), preserve_newlines=True),
-        }
+        activity_at = str(row.get("write_date") or "")
+        activity_summary = str(row.get("summary") or "").strip()
+        activity_note = _text_from_html(row.get("note"), preserve_newlines=True)
+
+        activity_entry = ContactActivityRecord(
+            activity_at=activity_at,
+            summary=activity_summary,
+            note=activity_note,
+        )
+
+        existing = activities_by_partner.setdefault(
+            partner_id,
+            {
+                "latest_activity_at": "",
+                "latest_activity_summary": "",
+                "latest_activity_note": "",
+                "activities": [],
+            },
+        )
+        existing["activities"].append(activity_entry)
+
+        if not existing["latest_activity_at"]:
+            existing["latest_activity_at"] = activity_at
+            existing["latest_activity_summary"] = activity_summary
+            existing["latest_activity_note"] = activity_note
 
     return activities_by_partner
 
@@ -356,6 +376,7 @@ def fetch_contact_updates(
                 latest_activity_summary=activity_info.get("latest_activity_summary", ""),
                 latest_activity_note=activity_info.get("latest_activity_note", ""),
                 notes=note_info.get("notes", []),
+                activities=activity_info.get("activities", []),
             )
         )
 
