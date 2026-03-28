@@ -60,6 +60,17 @@ def query_contact_updates(
 ) -> ContactUpdatesQueryResponse:
     try:
         _verify_internal_token(x_internal_token)
+        print(
+            "INFO contact_updates_query:",
+            {
+                "start_date": str(payload.start_date),
+                "end_date": str(payload.end_date),
+                "updated_by_name": payload.updated_by_name,
+                "timezone_name": payload.timezone_name,
+                "limit": payload.limit,
+            },
+            flush=True,
+        )
         start_date, end_date, contacts = fetch_contact_updates(
             _get_odoo_credentials(),
             start_date=payload.start_date,
@@ -67,6 +78,14 @@ def query_contact_updates(
             updated_by_name=payload.updated_by_name,
             timezone_name=payload.timezone_name,
             limit=payload.limit,
+        )
+        print(
+            "INFO contact_updates_result:",
+            {
+                "updated_by_name": payload.updated_by_name,
+                "contact_count": len(contacts),
+            },
+            flush=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
