@@ -64,6 +64,7 @@ def query_contact_updates(
             _get_odoo_credentials(),
             start_date=payload.start_date,
             end_date=payload.end_date,
+            updated_by_name=payload.updated_by_name,
             timezone_name=payload.timezone_name,
             limit=payload.limit,
         )

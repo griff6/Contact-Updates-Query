@@ -79,6 +79,10 @@ def _m2o_name(value: Any) -> str:
     return ""
 
 
+def _normalized_person_name(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip()).casefold()
+
+
 def _execute_kw(
     models: Any,
     credentials: OdooCredentials,
@@ -178,6 +182,7 @@ def _fetch_partner_notes(
     uid: int,
     start_utc: datetime,
     end_utc: datetime,
+    updated_by_name: str = "",
 ) -> dict[int, dict[str, Any]]:
     rows = _search_read_all(
         models,
@@ -190,11 +195,12 @@ def _fetch_partner_notes(
             ("write_date", ">=", _dt_to_odoo(start_utc)),
             ("write_date", "<", _dt_to_odoo(end_utc)),
         ],
-        ["res_id", "subject", "body", "write_date", "subtype_id"],
+        ["res_id", "subject", "body", "write_date", "subtype_id", "author_id"],
         "write_date desc",
     )
 
     notes_by_partner: dict[int, dict[str, Any]] = {}
+    filter_name = _normalized_person_name(updated_by_name)
     for row in rows:
         partner_id = int(row.get("res_id") or 0)
         if not partner_id:
@@ -202,6 +208,10 @@ def _fetch_partner_notes(
 
         subtype_name = _m2o_name(row.get("subtype_id")).lower()
         if subtype_name and "note" not in subtype_name:
+            continue
+
+        author_name = _m2o_name(row.get("author_id"))
+        if filter_name and _normalized_person_name(author_name) != filter_name:
             continue
 
         note_at = str(row.get("write_date") or "")
@@ -212,6 +222,7 @@ def _fetch_partner_notes(
             note_at=note_at,
             subject=note_subject,
             text=note_text,
+            author_name=author_name,
         )
 
         existing = notes_by_partner.setdefault(
@@ -239,6 +250,7 @@ def _fetch_partner_activities(
     uid: int,
     start_utc: datetime,
     end_utc: datetime,
+    updated_by_name: str = "",
 ) -> dict[int, dict[str, Any]]:
     rows = _search_read_all(
         models,
@@ -250,14 +262,19 @@ def _fetch_partner_activities(
             ("write_date", ">=", _dt_to_odoo(start_utc)),
             ("write_date", "<", _dt_to_odoo(end_utc)),
         ],
-        ["res_id", "summary", "note", "write_date"],
+        ["res_id", "summary", "note", "write_date", "user_id"],
         "write_date desc",
     )
 
     activities_by_partner: dict[int, dict[str, Any]] = {}
+    filter_name = _normalized_person_name(updated_by_name)
     for row in rows:
         partner_id = int(row.get("res_id") or 0)
         if not partner_id:
+            continue
+
+        user_name = _m2o_name(row.get("user_id"))
+        if filter_name and _normalized_person_name(user_name) != filter_name:
             continue
 
         activity_at = str(row.get("write_date") or "")
@@ -268,6 +285,7 @@ def _fetch_partner_activities(
             activity_at=activity_at,
             summary=activity_summary,
             note=activity_note,
+            user_name=user_name,
         )
 
         existing = activities_by_partner.setdefault(
@@ -314,6 +332,7 @@ def fetch_contact_updates(
     credentials: OdooCredentials,
     start_date: date | None,
     end_date: date | None,
+    updated_by_name: str,
     timezone_name: str,
     limit: int,
 ) -> tuple[date, date, list[ContactUpdateRecord]]:
@@ -324,8 +343,22 @@ def fetch_contact_updates(
     )
     uid, models = connect_odoo(credentials)
 
-    notes_by_partner = _fetch_partner_notes(models, credentials, uid, start_utc, end_utc)
-    activities_by_partner = _fetch_partner_activities(models, credentials, uid, start_utc, end_utc)
+    notes_by_partner = _fetch_partner_notes(
+        models,
+        credentials,
+        uid,
+        start_utc,
+        end_utc,
+        updated_by_name=updated_by_name,
+    )
+    activities_by_partner = _fetch_partner_activities(
+        models,
+        credentials,
+        uid,
+        start_utc,
+        end_utc,
+        updated_by_name=updated_by_name,
+    )
 
     partner_ids = sorted(set(notes_by_partner) | set(activities_by_partner))
     partners = _fetch_partners(models, credentials, uid, partner_ids)

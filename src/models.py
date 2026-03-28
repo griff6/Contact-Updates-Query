@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 class ContactUpdatesQueryRequest(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
+    updated_by_name: str = ""
     timezone_name: str = "America/Regina"
     limit: int = 250
 
@@ -47,12 +48,14 @@ class ContactNoteRecord(BaseModel):
     note_at: str = ""
     subject: str = ""
     text: str = ""
+    author_name: str = ""
 
 
 class ContactActivityRecord(BaseModel):
     activity_at: str = ""
     summary: str = ""
     note: str = ""
+    user_name: str = ""
 
 
 class ContactUpdatesQueryResponse(BaseModel):
