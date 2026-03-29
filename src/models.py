@@ -9,6 +9,7 @@ class ContactUpdatesQueryRequest(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     updated_by_name: str = ""
+    contact_scope: str = ""
     timezone_name: str = "America/Regina"
     limit: int = 250
 

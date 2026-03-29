@@ -83,6 +83,10 @@ def _normalized_person_name(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").strip()).casefold()
 
 
+def _normalized_scope(value: str) -> str:
+    return re.sub(r"[\s_]+", "", (value or "").strip()).casefold()
+
+
 def _execute_kw(
     models: Any,
     credentials: OdooCredentials,
@@ -312,17 +316,38 @@ def _fetch_partners(
     credentials: OdooCredentials,
     uid: int,
     partner_ids: list[int],
+    contact_scope: str,
 ) -> dict[int, dict[str, Any]]:
     if not partner_ids:
         return {}
+
+    scope = _normalized_scope(contact_scope)
+    domain: list[Any] = [("id", "in", partner_ids)]
+
+    if scope in {"companies", "company", "companiesonly"}:
+        domain.append(("is_company", "=", True))
+    elif scope in {"coop", "co-op"}:
+        tag_rows = _execute_kw(
+            models,
+            credentials,
+            uid,
+            "res.partner.category",
+            "search_read",
+            [[("name", "=", "Co Op")]],
+            {"fields": ["id"], "limit": 10},
+        )
+        tag_ids = [int(row["id"]) for row in tag_rows if row.get("id")]
+        if not tag_ids:
+            return {}
+        domain.append(("category_id", "in", tag_ids))
 
     rows = _search_read_all(
         models,
         credentials,
         uid,
         "res.partner",
-        [("id", "in", partner_ids)],
-        ["id", "name", "email", "phone", "mobile", "company_name", "parent_id", "write_date"],
+        domain,
+        ["id", "name", "email", "phone", "mobile", "company_name", "parent_id", "write_date", "is_company"],
         "name asc",
     )
     return {int(row["id"]): row for row in rows if row.get("id")}
@@ -333,6 +358,7 @@ def fetch_contact_updates(
     start_date: date | None,
     end_date: date | None,
     updated_by_name: str,
+    contact_scope: str,
     timezone_name: str,
     limit: int,
 ) -> tuple[date, date, list[ContactUpdateRecord]]:
@@ -361,7 +387,7 @@ def fetch_contact_updates(
     )
 
     partner_ids = sorted(set(notes_by_partner) | set(activities_by_partner))
-    partners = _fetch_partners(models, credentials, uid, partner_ids)
+    partners = _fetch_partners(models, credentials, uid, partner_ids, contact_scope=contact_scope)
 
     records: list[ContactUpdateRecord] = []
     for partner_id in partner_ids:

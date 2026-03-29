@@ -66,6 +66,7 @@ def query_contact_updates(
                 "start_date": str(payload.start_date),
                 "end_date": str(payload.end_date),
                 "updated_by_name": payload.updated_by_name,
+                "contact_scope": payload.contact_scope,
                 "timezone_name": payload.timezone_name,
                 "limit": payload.limit,
             },
@@ -76,6 +77,7 @@ def query_contact_updates(
             start_date=payload.start_date,
             end_date=payload.end_date,
             updated_by_name=payload.updated_by_name,
+            contact_scope=payload.contact_scope,
             timezone_name=payload.timezone_name,
             limit=payload.limit,
         )
@@ -83,6 +85,7 @@ def query_contact_updates(
             "INFO contact_updates_result:",
             {
                 "updated_by_name": payload.updated_by_name,
+                "contact_scope": payload.contact_scope,
                 "contact_count": len(contacts),
             },
             flush=True,

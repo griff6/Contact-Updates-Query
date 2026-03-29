@@ -16,6 +16,7 @@ export const fetchContactUpdates = webMethod(
         start_date: payload.startDate,
         end_date: payload.endDate,
         updated_by_name: payload.updatedByName || "",
+        contact_scope: payload.contactScope || "",
         timezone_name: "America/Regina",
         limit: 250,
       }),
