@@ -97,15 +97,51 @@ def _execute_kw(
     kwargs: dict[str, Any] | None = None,
 ) -> Any:
     kwargs = kwargs or {}
-    return models.execute_kw(
-        credentials.db,
+    try:
+        return models.execute_kw(
+            credentials.db,
+            uid,
+            credentials.password,
+            model,
+            method,
+            args,
+            kwargs,
+        )
+    except xmlrpc.client.Fault as exc:
+        raise OdooQueryError(f"Odoo query failed on {model}.{method}: {exc.faultString}") from exc
+    except Exception as exc:
+        raise OdooQueryError(f"Odoo query failed on {model}.{method}: {exc}") from exc
+
+
+def _get_model_fields(
+    models: Any,
+    credentials: OdooCredentials,
+    uid: int,
+    model: str,
+) -> set[str]:
+    fields = _execute_kw(
+        models,
+        credentials,
         uid,
-        credentials.password,
         model,
-        method,
-        args,
-        kwargs,
+        "fields_get",
+        [],
+        {"attributes": ["string"]},
     )
+    if not isinstance(fields, dict):
+        raise OdooQueryError(f"Odoo returned an unexpected fields_get response for {model}.")
+    return set(fields)
+
+
+def _filter_existing_fields(
+    models: Any,
+    credentials: OdooCredentials,
+    uid: int,
+    model: str,
+    fields: list[str],
+) -> list[str]:
+    existing_fields = _get_model_fields(models, credentials, uid, model)
+    return [field for field in fields if field == "id" or field in existing_fields]
 
 
 def connect_odoo(credentials: OdooCredentials) -> tuple[int, Any]:
@@ -341,13 +377,20 @@ def _fetch_partners(
             return {}
         domain.append(("category_id", "in", tag_ids))
 
+    partner_fields = _filter_existing_fields(
+        models,
+        credentials,
+        uid,
+        "res.partner",
+        ["id", "name", "email", "phone", "mobile", "company_name", "parent_id", "write_date", "is_company"],
+    )
     rows = _search_read_all(
         models,
         credentials,
         uid,
         "res.partner",
         domain,
-        ["id", "name", "email", "phone", "mobile", "company_name", "parent_id", "write_date", "is_company"],
+        partner_fields,
         "name asc",
     )
     return {int(row["id"]): row for row in rows if row.get("id")}
